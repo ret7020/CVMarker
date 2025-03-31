@@ -14,35 +14,12 @@
 #include "cvi_tdl_media.h"
 #include <string>
 
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
-
 #include "MJPEGWriter.h"
+#include "config.h"
 
-#define MODEL_SCALE 0.0039216
-#define MODEL_MEAN 0.0
-#define MODEL_CLASS_CNT 4
-#define MODEL_THRESH 0.2
-#define MODEL_NMS_THRESH 0.2
-#define BLUE_MAT cv::Scalar(255, 0, 0)
-#define RED_MAT cv::Scalar(0, 0, 255)
-
-double square_size = 54.0;
-
-cv::Scalar color_map[4] = {cv::Scalar(255, 0, 0), cv::Scalar(0, 255, 0), cv::Scalar(0, 0, 255), cv::Scalar(100, 100, 100)};
-
-// TODO replace
-cv::Mat camera_matrix = (cv::Mat_<double>(3, 3) << 727.97277723, 0, 308.83841529,
-                         0, 723.12158831, 270.40274403,
-                         0, 0, 1);
-cv::Mat dist_coeffs = (cv::Mat_<double>(5, 1) << -0.71612235, 0.61866812, -0.03516522, 0.00746986, -0.35457296);
-
-std::vector<cv::Point3f> object_points = {
-    cv::Point3f(-square_size / 2, -square_size / 2, 0),
-    cv::Point3f(square_size / 2, -square_size / 2, 0),
-    cv::Point3f(square_size / 2, square_size / 2, 0),
-    cv::Point3f(-square_size / 2, square_size / 2, 0)};
+int c_x = 0, c_y = 0;
+std::vector<cv::Point2f> image_points;
+cv::Mat rvec, tvec;
 
 volatile uint8_t interrupted = 0;
 
@@ -75,7 +52,6 @@ CVI_S32 init_param(const cvitdl_handle_t tdl_handle)
         return ret;
     }
 
-    // setup yolo algorithm preprocess
     YoloAlgParam yolov8_param =
         CVI_TDL_Get_YOLO_Algparam(tdl_handle, CVI_TDL_SUPPORTED_MODEL_YOLOV8_DETECTION);
     yolov8_param.cls = MODEL_CLASS_CNT;
@@ -131,31 +107,25 @@ int main(int argc, char *argv[])
         return ret;
     }
 
-
     while (!interrupted)
     {
-        std::pair<void*, void*> imagePtrs = cap.capture(bgr);
-        void* image_ptr = imagePtrs.first;
+        std::pair<void *, void *> imagePtrs = cap.capture(bgr);
+        void *image_ptr = imagePtrs.first;
 
-        VIDEO_FRAME_INFO_S *frameInfo = reinterpret_cast<VIDEO_FRAME_INFO_S*>(image_ptr);
+        VIDEO_FRAME_INFO_S *frameInfo = reinterpret_cast<VIDEO_FRAME_INFO_S *>(image_ptr);
 
         cvtdl_object_t obj_meta = {0};
         cv::Point2f coords[4];
-        // std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
         CVI_TDL_YOLOV8_Detection(tdl_handle, frameInfo, &obj_meta);
         cap.releaseImagePtr();
         image_ptr = nullptr;
 
-        // std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-        // double fps = 1 / std::chrono::duration<double>(end - begin).count();
-        // printf("\n\n----------\nDetection FPS: %lf\nDetected objects cnt: %d\n\nDetected objects:\n", fps, obj_meta.size);
         for (uint32_t i = 0; i < obj_meta.size; i++)
         {
-            // printf("x1 = %lf, y1 = %lf, x2 = %lf, y2 = %lf, cls: %d, score: %lf\n", obj_meta.info[i].bbox.x1, obj_meta.info[i].bbox.y1, obj_meta.info[i].bbox.x2, obj_meta.info[i].bbox.y2, obj_meta.info[i].classes, obj_meta.info[i].bbox.score);
             cv::Rect r = cv::Rect(obj_meta.info[i].bbox.x1, obj_meta.info[i].bbox.y1, obj_meta.info[i].bbox.x2 - obj_meta.info[i].bbox.x1, obj_meta.info[i].bbox.y2 - obj_meta.info[i].bbox.y1);
 
-            int c_x = obj_meta.info[i].bbox.x1 + (obj_meta.info[i].bbox.x2 - obj_meta.info[i].bbox.x1) / 2;
-            int c_y = obj_meta.info[i].bbox.y1 + (obj_meta.info[i].bbox.y2 - obj_meta.info[i].bbox.y1) / 2;
+            c_x = obj_meta.info[i].bbox.x1 + (obj_meta.info[i].bbox.x2 - obj_meta.info[i].bbox.x1) / 2;
+            c_y = obj_meta.info[i].bbox.y1 + (obj_meta.info[i].bbox.y2 - obj_meta.info[i].bbox.y1) / 2;
             cv::circle(bgr, cv::Point(c_x, c_y), 5, cv::Scalar(0, 0, 255), -1);
             cv::rectangle(bgr, r, color_map[obj_meta.info[i].classes], 1, 8, 0);
             coords[obj_meta.info[i].classes] = cv::Point2f(c_x, c_y);
@@ -167,29 +137,27 @@ int main(int argc, char *argv[])
                         color_map[obj_meta.info[i].classes],
                         1);
         }
-        cv::line(bgr, coords[0], coords[1], (30, 100, 200), 5);
-        cv::line(bgr, coords[1], coords[3], (30, 100, 200), 5);
-        cv::line(bgr, coords[2], coords[3], (30, 100, 200), 5);
-        cv::line(bgr, coords[0], coords[2], (30, 100, 200), 5);
+        cv::line(bgr, coords[0], coords[1], CENTER_COLOR, 5);
+        cv::line(bgr, coords[1], coords[3], CENTER_COLOR, 5);
+        cv::line(bgr, coords[2], coords[3], CENTER_COLOR, 5);
+        cv::line(bgr, coords[0], coords[2], CENTER_COLOR, 5);
 
-        std::vector<cv::Point2f> image_points = {
-            coords[2],  // Bottom-left
+        image_points = {
+            coords[2], // Bottom-left
             coords[3], // Bottom-right
             coords[1], // Top-right
             coords[0]  // Top-left
         };
-        cv::Mat rvec, tvec;
+
         bool success = cv::solvePnP(object_points, image_points, camera_matrix, dist_coeffs, rvec, tvec);
         double distance = cv::norm(tvec);
         printf("Dist: %lf mm.\n", distance);
-
-
 
         test.write(bgr);
         bgr.release();
     }
 
-    printf("Stopping stream:\n");
+    printf("Stopping stream...\n");
     test.stop();
     cap.release();
 
