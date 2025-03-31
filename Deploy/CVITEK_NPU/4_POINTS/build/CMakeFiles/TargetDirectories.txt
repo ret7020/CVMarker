@@ -1,3 +1,0 @@
-/home/stephan/Progs/CVMarker/Deploy/CVITEK_NPU/4_POINTS/build/CMakeFiles/stream_yolov8.dir
-/home/stephan/Progs/CVMarker/Deploy/CVITEK_NPU/4_POINTS/build/CMakeFiles/edit_cache.dir
-/home/stephan/Progs/CVMarker/Deploy/CVITEK_NPU/4_POINTS/build/CMakeFiles/rebuild_cache.dir
