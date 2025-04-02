@@ -76,8 +76,12 @@ CVI_S32 init_param(const cvitdl_handle_t tdl_handle)
 int main(int argc, char *argv[])
 {
 
+
     signal(SIGINT, interrupt_handler);
     MJPEGWriter test(7777);
+
+    FILE *tvecLog;
+    tvecLog = fopen("tvecLog.txt", "w");
 
     cv::VideoCapture cap;
     cv::Mat bgr;
@@ -106,6 +110,7 @@ int main(int argc, char *argv[])
         printf("open model failed with %#x!\n", ret);
         return ret;
     }
+    // long long counter = 0;
 
     while (!interrupted)
     {
@@ -152,9 +157,24 @@ int main(int argc, char *argv[])
         bool success = cv::solvePnP(object_points, image_points, camera_matrix, dist_coeffs, rvec, tvec);
         double distance = cv::norm(tvec);
         printf("Dist: %lf mm.\n", distance);
-
+	char tvecNormText[128];
+	sprintf(tvecNormText, "tvec norm: %lf", distance);
+	cv::putText(bgr,
+                        tvecNormText,
+                        cv::Point(40, 40),
+                        cv::FONT_HERSHEY_DUPLEX,
+                        1.0,
+                        cv::Scalar(0, 255, 0),
+                        1);
+	
+	cv::Vec3d t = tvec;
+	fprintf(tvecLog, "%lf,%lf,%lf\n", t[0], t[1], t[2]);
         test.write(bgr);
+	// char fileName[128];
+	// sprintf(fileName, "./images/%d.jpg", counter);
+	// cv::imwrite(fileName, bgr);
         bgr.release();
+	// counter++;
     }
 
     printf("Stopping stream...\n");

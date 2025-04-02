@@ -7,10 +7,10 @@
 #define MODEL_SCALE 0.0039216
 #define MODEL_MEAN 0.0
 #define MODEL_CLASS_CNT 4
-#define MODEL_THRESH 0.2
-#define MODEL_NMS_THRESH 0.2
+#define MODEL_THRESH 0.5
+#define MODEL_NMS_THRESH 0.6
 
-#define CENTER_COLOR cv::Scalar(30, 100, 200)
+#define CENTER_COLOR cv::Scalar(200, 100, 30)
 
 double marker_size = 54.0; // mm
 
