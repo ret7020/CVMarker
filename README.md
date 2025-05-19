@@ -2,6 +2,8 @@
 
 Detecting and estimating markers with CNN on edge devices. Final goal is to create some pattern with payload that can be detected and estimated via YOLO on NPU. Maybe it will be more robust than general fiducial markers, like Aruco.
 
+Actual model for marker can be downloaded [here](https://drive.google.com/file/d/1NSvatqthRdOnc4v0QThkMGnhKRA9OhTQ/view?usp=sharing)
+
 Current test pattern (will be redesigned after some experiments):
 
 ![image](https://github.com/user-attachments/assets/41da1415-9c11-40dc-b7d8-0543b03c7f71)
