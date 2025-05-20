@@ -11,6 +11,7 @@
 #define MODEL_THRESH 0.15
 #define MODEL_NMS_THRESH 0.5
 #define FRAME_SIZE 640
+#define STREAM_VISUALIZATION
 // #define DEBUG_SAVE_ON_FAIL
 
 #define CENTER_COLOR cv::Scalar(200, 100, 30)

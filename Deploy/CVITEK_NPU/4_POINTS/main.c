@@ -23,6 +23,7 @@ While true sending vpe; target loop
 #include <string>
 #include <time.h>
 #include <unistd.h>
+#include "MJPEGWriter.h"
 
 #include "config.h"
 #include "yolo.h"
@@ -45,18 +46,18 @@ void interrupt_handler(int signum) {
     interrupted = 1;
 }
 
-int detect_marker(cv::Vec3d *translation_result, cv::Vec3f *orientation_result) {
+int detect_marker(cv::Vec3d *translation_result, cv::Vec3f *orientation_result, cv::Mat *bgr) {
     /*
     0  - inference ok; marker detected
     -1 - inference not ok; frame is null
     -2 - inference ok; marker not detected (not all corners)
     */
-    cv::Mat bgr;
+    
     cvtdl_object_t obj_meta = {0};
     cv::Point2f coords[4];
     float max_scores[4] = {0};
 
-    std::pair<void *, void *> imagePtrs = cap.capture(bgr);
+    std::pair<void *, void *> imagePtrs = cap.capture(*bgr);
     void *image_ptr = imagePtrs.first;
     VIDEO_FRAME_INFO_S *frameInfo = reinterpret_cast<VIDEO_FRAME_INFO_S *>(image_ptr);
 
@@ -110,6 +111,15 @@ int detect_marker(cv::Vec3d *translation_result, cv::Vec3f *orientation_result) 
         return -2;
     }
 
+    for (int i = 0; i < 4; i++) {
+        if (max_scores[i] > 0) {
+            cv::Point2f pt = coords[i];
+            cv::circle(*bgr, pt, 5, color_map[i], -1);
+            cv::putText(*bgr, std::to_string(i), pt + cv::Point2f(5, -5), cv::FONT_HERSHEY_SIMPLEX, 0.5, color_map[i], 1);
+    
+        }
+    }
+
     std::vector<cv::Point2f> image_points = {
         coords[2], // Bottom-left
         coords[3], // Bottom-right
@@ -152,21 +162,36 @@ int main(int argc, char *argv[]) {
         return ret;
     }
 
+    cv::Mat bgr;
+    cap >> bgr;
+
+    #ifdef STREAM_VISUALIZATION
+    MJPEGWriter test(7777);
+    test.write(bgr);
+    test.start();
+    #endif
+
+    
     ret = SET_YOLO_Params(tdl_handle);
     ret = CVI_TDL_OpenModel(tdl_handle, CVI_TDL_SUPPORTED_MODEL_YOLOV8_DETECTION, argv[1]);
-
+    
     if (ret != CVI_SUCCESS) {
         printf("[MAIN] Open model failed with %#x!\n", ret);
         return ret;
     }
     printf("[MAIN] Detector ready\n");
-
+    
     cv::Vec3d marker_position;
     cv::Vec3f marker_orientation;
-
+    
     // First detection
     while (!interrupted) {
-        int status = detect_marker(&marker_position, &marker_orientation);
+        // TODO stream mode
+        cv::Mat bgr;
+        int status = detect_marker(&marker_position, &marker_orientation, &bgr);
+        #ifdef STREAM_VISUALIZATION
+        test.write(bgr);
+        #endif
         if (status < 0)
             printf("[MAIN] Marker lost\n");
         else
@@ -176,6 +201,8 @@ int main(int argc, char *argv[]) {
 
     printf("Exit...\n");
     clean_up();
+    test.stop();
+
 
     return 0;
 }
