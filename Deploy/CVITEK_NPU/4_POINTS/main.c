@@ -1,14 +1,4 @@
-/*
-Init sequence:
-Init camera
-Init yolo
-Get first detection and correct marker estimation
-Init mavlink
-Warmup mavlink with correct vpe and correct target position
-Put into offboard and ARM
-While true sending vpe; target loop
-*/
-
+#include "MJPEGWriter.h"
 #include "core/cvi_tdl_types_mem_internal.h"
 #include "core/utils/vpss_helper.h"
 #include "cvi_tdl.h"
@@ -23,7 +13,7 @@ While true sending vpe; target loop
 #include <string>
 #include <time.h>
 #include <unistd.h>
-#include "MJPEGWriter.h"
+#include <algorithm>
 
 #include "config.h"
 #include "yolo.h"
@@ -52,7 +42,7 @@ int detect_marker(cv::Vec3d *translation_result, cv::Vec3f *orientation_result, 
     -1 - inference not ok; frame is null
     -2 - inference ok; marker not detected (not all corners)
     */
-    
+
     cvtdl_object_t obj_meta = {0};
     cv::Point2f coords[4];
     float max_scores[4] = {0};
@@ -63,7 +53,11 @@ int detect_marker(cv::Vec3d *translation_result, cv::Vec3f *orientation_result, 
 
     // Check frame read ok and inference
     if (image_ptr != nullptr) {
+        // std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
         CVI_TDL_YOLOV8_Detection(tdl_handle, frameInfo, &obj_meta);
+        // std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+        // double fps = 1 / std::chrono::duration<double>(end - begin).count();
+        // printf("Detection FPS: %lf\n", fps);
         cap.releaseImagePtr();
         image_ptr = nullptr;
     } else { // prevent seg fault
@@ -111,14 +105,17 @@ int detect_marker(cv::Vec3d *translation_result, cv::Vec3f *orientation_result, 
         return -2;
     }
 
+#ifdef STREAM_VISUALIZATION
     for (int i = 0; i < 4; i++) {
         if (max_scores[i] > 0) {
             cv::Point2f pt = coords[i];
             cv::circle(*bgr, pt, 5, color_map[i], -1);
-            cv::putText(*bgr, std::to_string(i), pt + cv::Point2f(5, -5), cv::FONT_HERSHEY_SIMPLEX, 0.5, color_map[i], 1);
-    
+            cv::putText(*bgr, std::to_string(i), pt + cv::Point2f(5, -5), cv::FONT_HERSHEY_SIMPLEX, 0.5, color_map[i],
+                        1);
         }
     }
+    
+#endif
 
     std::vector<cv::Point2f> image_points = {
         coords[2], // Bottom-left
@@ -131,11 +128,16 @@ int detect_marker(cv::Vec3d *translation_result, cv::Vec3f *orientation_result, 
     bool success = cv::solvePnP(object_points, image_points, camera_matrix, dist_coeffs, rvec, tvec, false,
                                 cv::SOLVEPNP_IPPE); // object_points - ref to config.h
 
+    #ifdef STREAM_VISUALIZATION
+        cv::drawFrameAxes(*bgr, camera_matrix, dist_coeffs, rvec, tvec, 40);
+    #endif
+
     cv::Vec3d position(tvec);
-    // Position in meters
+    // // Position in meters - NED convert
+    std::swap(position[0], position[1]);
     position[0] *= -0.001;
     position[1] *= -0.001;
-    position[2] *= -0.001;
+    position[2] *= 0.001;
 
     cv::Mat R_cam_to_marker;
     cv::Rodrigues(rvec, R_cam_to_marker);
@@ -151,8 +153,8 @@ int main(int argc, char *argv[]) {
     signal(SIGINT, interrupt_handler); // Correct program stop
 
     CVI_S32 ret;
-    cap.set(cv::CAP_PROP_FRAME_HEIGHT, FRAME_SIZE);
-    cap.set(cv::CAP_PROP_FRAME_WIDTH, FRAME_SIZE);
+    cap.set(cv::CAP_PROP_FRAME_HEIGHT, atoi(argv[2]));
+    cap.set(cv::CAP_PROP_FRAME_WIDTH, atoi(argv[2]));
 
     cap.open(0);
 
@@ -165,33 +167,32 @@ int main(int argc, char *argv[]) {
     cv::Mat bgr;
     cap >> bgr;
 
-    #ifdef STREAM_VISUALIZATION
+#ifdef STREAM_VISUALIZATION
     MJPEGWriter test(7777);
     test.write(bgr);
     test.start();
-    #endif
+#endif
 
-    
     ret = SET_YOLO_Params(tdl_handle);
     ret = CVI_TDL_OpenModel(tdl_handle, CVI_TDL_SUPPORTED_MODEL_YOLOV8_DETECTION, argv[1]);
-    
+
     if (ret != CVI_SUCCESS) {
         printf("[MAIN] Open model failed with %#x!\n", ret);
         return ret;
     }
     printf("[MAIN] Detector ready\n");
-    
+
     cv::Vec3d marker_position;
     cv::Vec3f marker_orientation;
-    
+
     // First detection
     while (!interrupted) {
         // TODO stream mode
         cv::Mat bgr;
         int status = detect_marker(&marker_position, &marker_orientation, &bgr);
-        #ifdef STREAM_VISUALIZATION
+#ifdef STREAM_VISUALIZATION
         test.write(bgr);
-        #endif
+#endif
         if (status < 0)
             printf("[MAIN] Marker lost\n");
         else
@@ -202,7 +203,6 @@ int main(int argc, char *argv[]) {
     printf("Exit...\n");
     clean_up();
     test.stop();
-
 
     return 0;
 }
